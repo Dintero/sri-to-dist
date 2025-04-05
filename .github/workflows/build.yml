@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+      - name: yarn install, build, test and lint
+        run: |
+          yarn install --immutable
+          yarn run test
+          yarn run lint
+          yarn run build

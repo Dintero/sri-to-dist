@@ -1,0 +1,286 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { createHash } from "node:crypto";
+
+const extractLinkRel = (scriptOrLinkTag: string): string | undefined => {
+    const re = /<link\s+[^>]*rel="([^"]*)"/;
+    const match = scriptOrLinkTag.match(re);
+    return match ? match[1] : undefined;
+};
+
+const isSriTag = (scriptOrLinkTag: string): boolean => {
+    const rel = extractLinkRel(scriptOrLinkTag);
+
+    if (rel) {
+        // Check link tags
+        // Split by whitespace to handle multiple rel values
+        const relValues = rel.split(/\s+/);
+
+        // Check for critical resource types
+        const criticalTypes = [
+            "style",
+            "stylesheet",
+            "preload",
+            "modulepreload",
+        ];
+
+        // If preload, check if it's preloading a style or script
+        if (relValues.includes("preload")) {
+            // Extract as attribute
+            const asPattern = /as="([^"]*)"/;
+            const asMatch = scriptOrLinkTag.match(asPattern);
+
+            if (asMatch) {
+                const asValue = asMatch[1];
+                return asValue === "style" || asValue === "script";
+            }
+
+            if (relValues.includes("stylesheet")) {
+                // handle case where rel contains both preload and stylesheet
+                return true;
+            }
+
+            if (relValues.includes("style")) {
+                // handle case where rel contains both preload and style
+                return true;
+            }
+
+            // Do not calculate sri for other preload link tags
+            return false;
+        }
+
+        // Check if link tag has sri rel
+        for (const relValue of relValues) {
+            if (criticalTypes.includes(relValue)) {
+                return true;
+            }
+        }
+
+        // Ignore other types of link tags
+        return false;
+    }
+
+    // Check if it's a script tag
+    if (scriptOrLinkTag.startsWith("<script")) {
+        return true;
+    }
+
+    // Not a script tag
+    return false;
+};
+
+const toHtmlWithSri = async (
+    htmlContent: string,
+    baseDir: string,
+    baseUrl?: string,
+    noRemote?: boolean,
+    verify?: boolean,
+): Promise<string> => {
+    // Find all script and link tags that should have integrity hashes
+    const re = /<(script|link)\s+[^>]*(?:src|href)="([^"]+)"[^>]*>/g;
+
+    let updatedHtml = htmlContent;
+    const matches = htmlContent.matchAll(re);
+
+    for (const [scriptOrLinkTag, _, src] of matches) {
+        // Skip non supported resources
+        if (!isSriTag(scriptOrLinkTag)) {
+            continue;
+        }
+
+        // Get content of script or link
+        try {
+            const content = await getContent(src, baseDir, baseUrl, noRemote);
+
+
+            // Calculate SHA-384 hash and create integrity attribute value
+            const hashHex = calculateSha384(content);
+            const integrity = `sha384-${hashHex}`;
+            if(verify) {
+                const oldHash = getIntegrityFromTag(scriptOrLinkTag);
+                if(!oldHash){
+                    throw new Error(`Missing hash for ${src}, expected ${integrity}`);
+                }
+                if(oldHash !== integrity){
+                    throw new Error(`Invalid hash ${oldHash} for ${src}, expected ${integrity}`);
+                }
+            }
+            // Create new script tag with integrity
+            const sriScriptTag = toSriScriptTag(scriptOrLinkTag, integrity);
+
+            // Replace in HTML
+            updatedHtml = updatedHtml.replace(scriptOrLinkTag, sriScriptTag);
+        } catch (error) {
+            console.error(`Warning: Failed to process ${src}: ${error}`);
+            throw error;
+        }
+    }
+
+    return updatedHtml;
+};
+
+
+const getIntegrityFromTag = (tag: string): string | undefined => {
+    const integrityPattern = /integrity="([^"]*)"/;
+    const match = tag.match(integrityPattern);
+    return match ? match[1] : undefined;
+};
+
+const getContent = async (
+    src: string,
+    baseDir: string,
+    baseUrl?: string,
+    noRemote?: boolean,
+): Promise<Buffer> => {
+    // Handle remote vs local content
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+        // If remote_base_url is provided and src starts with it, treat it as local content
+        if (baseUrl && src.startsWith(baseUrl)) {
+            return readLocalContent(src, baseDir, baseUrl);
+        }
+        if(noRemote){
+            throw new Error("Remote sri resources not allowed");
+        }
+        return fetchRemoteContent(src);
+    }
+    // For relative src, read from file
+    return readLocalContent(src, baseDir, baseUrl || "");
+};
+
+const fetchRemoteContent = async (src: string): Promise<Buffer> => {
+    try {
+        // Using native fetch available in Node.js 18+
+        const response = await fetch(src);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch: ${response.statusText}`);
+        }
+
+        // Check content type
+        const contentType = response.headers.get("content-type") || "";
+
+        // Verify content type is appropriate for scripts or stylesheets
+        const validTypes = [
+            "text/javascript",
+            "application/javascript",
+            "application/x-javascript",
+            "text/css",
+            "text/plain",
+        ];
+
+        if (!validTypes.some((type) => contentType.includes(type))) {
+            throw new Error(
+                `Unexpected content type '${contentType}' for resource '${src}'`,
+            );
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    } catch (error) {
+        throw new Error(
+            `Failed to fetch remote content from '${src}': ${error}`,
+        );
+    }
+};
+
+const addTrailingSlashIfNotEmpty = (baseUrl: string): string => {
+    if (baseUrl === "") return baseUrl;
+    return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+};
+
+const toLocalPath = (src: string, baseDir: string, baseUrl: string): string => {
+    const baseWithTrailingSlash = addTrailingSlashIfNotEmpty(baseUrl);
+
+    let localPath = src;
+    if (src.startsWith(baseWithTrailingSlash)) {
+        localPath = src.substring(baseWithTrailingSlash.length);
+    } else if (src.startsWith(baseUrl)) {
+        localPath = src.substring(baseUrl.length);
+    }
+
+    // Remove any slash from start at file path before reading local file
+    const localPathWithoutStartingSlash = localPath.startsWith("/")
+        ? localPath.substring(1)
+        : localPath;
+    return path.join(baseDir, localPathWithoutStartingSlash);
+};
+
+const readLocalContent = (
+    src: string,
+    baseDir: string,
+    baseUrl: string,
+): Buffer => {
+    const filePath = toLocalPath(src, baseDir, baseUrl);
+    try {
+        return fs.readFileSync(filePath);
+    } catch (error) {
+        throw new Error(`Failed to read file at path '${filePath}': ${error}`);
+    }
+};
+
+const calculateSha384 = (content: Buffer): string => {
+    const hash = createHash("sha384").update(content).digest();
+    return hash.toString("base64");
+};
+
+const handleUpdatedHtml = (
+    stdout: NodeJS.WriteStream,
+    outputPath?: string,
+    updatedHtml?: string,
+): void => {
+    if (!updatedHtml) return;
+
+    if (outputPath) {
+        fs.writeFileSync(outputPath, updatedHtml);
+    } else {
+        stdout.write(`${updatedHtml}\n`);
+    }
+};
+
+const toSriScriptTag = (tag: string, integrity: string): string => {
+    // First handle the integrity attribute
+    let newTag = tag;
+
+    if (tag.includes("integrity=")) {
+        // Replace existing integrity attribute
+        const reIntegrity = /integrity="[^"]*"/g;
+        newTag = newTag.replace(reIntegrity, `integrity="${integrity}"`);
+    } else {
+        // Add integrity attribute
+        if (tag.endsWith("/>")) {
+            newTag = newTag.replace(/\/>$/, ` integrity="${integrity}"/>`);
+        } else {
+            newTag = newTag.replace(/>$/, ` integrity="${integrity}">`);
+        }
+    }
+
+    // Ensure crossorigin attribute is set
+    return ensureCrossoriginAnonymous(newTag);
+};
+
+const ensureCrossoriginAnonymous = (tag: string): string => {
+    // Replace if exists
+    if (tag.includes("crossorigin=")) {
+        const reCrossorigin = /crossorigin="[^"]*"/g;
+        return tag.replace(reCrossorigin, 'crossorigin="anonymous"');
+    }
+
+    // Add crossorigin="anonymous" attribute if missing from tag
+    if (tag.endsWith("/>")) {
+        return tag.replace(/\/>$/, ' crossorigin="anonymous"/>');
+    }
+    return tag.replace(/>$/, ' crossorigin="anonymous">');
+};
+
+export {
+    extractLinkRel,
+    isSriTag,
+    toHtmlWithSri,
+    getContent,
+    readLocalContent,
+    fetchRemoteContent,
+    calculateSha384,
+    ensureCrossoriginAnonymous,
+    toSriScriptTag,
+    handleUpdatedHtml,
+};

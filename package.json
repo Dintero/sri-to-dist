@@ -47,6 +47,9 @@
         "url": "https://github.com/Dintero/sri-to-dist/issues"
     },
     "private": false,
+    "publishConfig": {
+      "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "https://github.com/Dintero/sri-to-dist.git"

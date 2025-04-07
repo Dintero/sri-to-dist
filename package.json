@@ -7,7 +7,10 @@
     "bin": {
         "sri-to-dist": "./bin/sri-to-dist.js"
     },
-    "files": ["dist", "bin"],
+    "files": [
+        "dist",
+        "bin"
+    ],
     "scripts": {
         "build": "tsc",
         "prepare": "npm run build",
@@ -17,13 +20,20 @@
         "lint": "biome lint .",
         "format": "biome format . --write"
     },
-    "keywords": ["subresource", "integrity", "sri", "html", "security"],
+    "keywords": [
+        "subresource",
+        "integrity",
+        "sri",
+        "html",
+        "security"
+    ],
     "author": "Sven Viig",
     "license": "MIT",
     "devDependencies": {
         "@biomejs/biome": "1.9.4",
         "@types/node": "22.14.0",
         "@types/temp": "0.9.4",
+        "semantic-release": "24.2.3",
         "temp": "0.9.4",
         "typescript": "5.8.2",
         "vitest": "3.1.1"

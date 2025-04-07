@@ -40,5 +40,6 @@
     },
     "dependencies": {
         "commander": "13.1.0"
-    }
+    },
+    "private": false
 }

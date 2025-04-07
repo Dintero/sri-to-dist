@@ -30,11 +30,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "lts/*"
-      - name: Install dependencies, test and lint
+      - name: Install dependencies, lint, test and build
         run: |
           yarn install --immutable
-          yarn run test
           yarn run lint
+          yarn run test
           yarn run build
       - name: Release
         env:

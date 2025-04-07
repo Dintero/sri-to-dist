@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: "lts/*"
           cache: npm
-      - name: yarn install, build, test and lint
+      - name: yarn install, lint, test and build
         run: |
           yarn install --immutable
-          yarn run test
           yarn run lint
+          yarn run test
           yarn run build

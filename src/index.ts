@@ -2,15 +2,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Command } from "commander";
 import { handleUpdatedHtml, toHtmlWithSri } from "./lib";
+import { version } from '../package.json'
 
 const main = async () => {
     try {
         // Set up command-line parser
         const program = new Command();
         program
-            .version("0.1.0")
+            .version(version)
             .description(
-                "HTML processing tool that adds subresource integrity hashes",
+                "HTML processing tool to add subresource integrity hashes",
             )
             .requiredOption("-i, --input <file>", "Input HTML file")
             .option("-o, --output <file>", "Optional output HTML file")

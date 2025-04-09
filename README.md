@@ -1,6 +1,6 @@
 # sri-to-dist
 
-[![Actions Status](https://github.com/Dintero/sri-to-dist/workflows/CI/badge.svg?branch=master)](https://github.com/Dintero/sri-to-dist/actions?query=branch%3Amaster+workflow%3ACI+) [![npm latest version](https://img.shields.io/npm/v/@dintero/sri-to-dist/latest.svg)](https://www.npmjs.com/package/@dintero/sri-to-dist)
+[![Actions Status](https://github.com/Dintero/sri-to-dist/workflows/Release/badge.svg)](https://github.com/Dintero/sri-to-dist/actions)[![Actions Status](https://github.com/Dintero/sri-to-dist/workflows/CI/badge.svg)](https://github.com/Dintero/sri-to-dist/actions)[![npm latest version](https://img.shields.io/npm/v/@dintero/sri-to-dist/latest.svg)](https://www.npmjs.com/package/@dintero/sri-to-dist)
 
 A tool to add subresource integrity (SRI) hashes to HTML files.
 

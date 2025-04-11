@@ -13,6 +13,10 @@ import {
     ensureCrossoriginAnonymous,
     toSriScriptTag,
     handleUpdatedHtml,
+    isImportMapTag,
+    parseImportMap,
+    extractImports,
+    toSriImportMap,
 } from "../src/lib";
 
 // Automatically track and clean up temporary files
@@ -86,6 +90,152 @@ describe("sri-to-dist-lib", () => {
         it("should not identify meta as SRI tag", () => {
             const tag = '<meta charset="UTF-8">';
             expect(isSriTag(tag)).toBe(false);
+        });
+    });
+
+    describe("isImportMapTag", () => {
+        it("should identify script type importmap as importmap", () => {
+            const tag = '<script type="importmap"></script>';
+            expect(isImportMapTag(tag)).toBe(true);
+        });
+        it("should identify script type importmap as importmap with extra attributes", () => {
+            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x"></script>';
+            expect(isImportMapTag(tag)).toBe(true);
+        });
+        it("should identify other script type as not an import map", () => {
+            const tag = '<script type="other"></script>';
+            expect(isImportMapTag(tag)).toBe(false);
+        });
+        it("should identify script with missing type as not an import map", () => {
+            const tag = '<script></script>';
+            expect(isImportMapTag(tag)).toBe(false);
+        });
+        it("should identify other type of tag not an import map", () => {
+            const tag = '<link rel="author"/>';
+            expect(isImportMapTag(tag)).toBe(false);
+        });
+        it("should identify other type of tag not an import map", () => {
+            const tag = '<link rel="other" type="importmap"/>';
+            expect(isImportMapTag(tag)).toBe(false);
+        });
+    });
+
+    describe("parseImportMap", () => {
+        it("should extract json in importmap", () => {
+            const tag = '<script type="importmap">{"imports":{"app":"./app.js"}}</script>';
+            expect(parseImportMap(tag)).toMatchObject({imports:{app: './app.js'}});
+        });
+        it("should extract json in importmap with extra attributes", () => {
+            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}}</script>';
+            expect(parseImportMap(tag)).toMatchObject({imports:{app: './app.js'}});
+        });
+        it("should throw if importmap is empty", () => {
+            const tag = '<script type="importmap"></script>';
+            expect(() => parseImportMap(tag)).toThrow(
+                `Failed to parse import map for tag ${tag}`,
+            );
+        });
+        it("should throw if importmap is self closed tag", () => {
+            const tag = '<script type="importmap" />';
+            expect(() => parseImportMap(tag)).toThrow(
+                `Failed to parse import map for tag ${tag}`,
+            );
+        });
+        it("should throw if content is not json", () => {
+            const tag = '<script type="importmap">Not a json object</script>';
+            expect(() => parseImportMap(tag)).toThrow(
+                `Failed to parse import map for tag ${tag}`,
+            );
+        });
+        it("should throw if content is wrong tag type", () => {
+            const tag = '<link rel="other" type="importmap"/>';
+            expect(() => parseImportMap(tag)).toThrow(
+                `Failed to parse import map for tag ${tag}`,
+            );
+        });
+    });
+    describe("extractImports", () => {
+        it("should extract imports from importmap", () => {
+            const importMapJson = {
+                imports: {
+                    app: "./app.js"
+                }
+            };
+            expect(extractImports(importMapJson)).toMatchObject(
+                [{
+                    src: "./app.js",
+                    oldHash: undefined
+                }]
+            );
+        });
+        it("should extract imports with old integrity hash from importmap", () => {
+            const importMapJson = {
+                imports: {
+                    app: "./app.js"
+                },
+                integrity:{
+                    "./app.js": "sha384-test"
+                }
+            };
+            expect(extractImports(importMapJson)).toMatchObject(
+                [{
+                    src: "./app.js",
+                    oldHash: "sha384-test"
+                }]
+            );
+        });
+        it("should create empty list if imports is empty", () => {
+            const importMapJson = {imports:{}};
+            expect(extractImports(importMapJson)).toMatchObject(
+                []
+            );
+        });
+        it("should create empty list if no imports found", () => {
+            const importMapJson = {};
+            // @ts-ignore
+            expect(extractImports(importMapJson)).toMatchObject(
+                []
+            );
+        });
+    });
+
+    describe("toSriImportMap", () => {
+        it("should create updated importmap tag with integrity object", () => {
+            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "other":{"key": "value"}}</script>';
+            const importMapJson = {
+                imports: {
+                    app: "./app.js"
+                },
+                other: {
+                    key: "value"
+                }
+            };
+            const newIntegrityMap = {
+                "./app.js": "sha384-test"
+            };
+            expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
+                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"other":{"key":"value"},"integrity":{"./app.js":"sha384-test"}}</script>`
+            );
+        });
+        it("should create importmap tag with updated integrity object", () => {
+            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "integrity":{"./app.js": "sha384-old"}, "other":{"key": "value"}}</script>';
+            const importMapJson = {
+                imports: {
+                    app: "./app.js"
+                },
+                integrity: {
+                    "./app.js": "sha384-old"
+                },
+                other: {
+                    key: "value"
+                }
+            };
+            const newIntegrityMap = {
+                "./app.js": "sha384-test"
+            };
+            expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
+                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"integrity":{"./app.js":"sha384-test"},"other":{"key":"value"}}</script>`
+            );
         });
     });
 
@@ -170,7 +320,21 @@ describe("sri-to-dist-lib", () => {
                 "Invalid hash bad-hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
             );
         });
-
+        it("should add integrity to importmap script tags", async () => {
+            const baseUrl = "";
+            // Note uses fixture app.js file from /example folder
+            const htmlContent = `<html><head><title>index</title><script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./example/app.js"}, "other":{"key": "value"}}</script></head><body>Hello world!s</body></html>`;
+            const result = await toHtmlWithSri(
+                htmlContent,
+                path.dirname(path.join(process.cwd(), "index.html")),
+                baseUrl,
+                false,
+                false
+            );
+            const expected =
+                '<html><head><title>index</title><script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./example/app.js"},"other":{"key":"value"},"integrity":{"./example/app.js":"sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC"}}</script></head><body>Hello world!s</body></html>';
+            expect(result).toBe(expected);
+        });
     });
 
     describe("readLocalContent", () => {

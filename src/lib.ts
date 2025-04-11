@@ -69,6 +69,67 @@ const isSriTag = (scriptOrLinkTag: string): boolean => {
     return false;
 };
 
+export const isImportMapTag = (scriptOrLinkTag: string): boolean => {
+    return scriptOrLinkTag.startsWith("<script ") && scriptOrLinkTag.includes('type="importmap"');
+}
+
+type ImportMapJson = {
+    imports: {
+        [key: string]: string
+    },
+    integrity?: {
+        [src: string]: string
+    }
+    scopes?:{
+        [scope: string]: {
+            [key: string]: string
+        }
+    }
+}
+
+export const parseImportMap = (scriptOrLinkTag: string) => {
+    // Extract content between script tags
+    const contentRegex = /<script[^>]*>([\s\S]*?)<\/script>/;
+    const contentMatch = scriptOrLinkTag.match(contentRegex);
+    if (!contentMatch || !contentMatch[1]) {
+        throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+    }
+
+    try {
+        const content = contentMatch[1].trim();
+        // Parse the import map JSON
+        const importMapJson = JSON.parse(content);
+        if(typeof importMapJson !== 'object' || Array.isArray(importMapJson)) {
+            throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+        }
+        return importMapJson as ImportMapJson;
+    } catch (error) {
+        throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+    }
+};
+
+export const extractImports = (importMapJson: ImportMapJson) => {
+    const imports = importMapJson.imports ?
+        Object.keys(importMapJson.imports).map(key => {
+            const src = importMapJson.imports[key];
+            return {
+                src,
+                oldHash: importMapJson.integrity?.[src]
+            };
+        }) : [];
+    return imports;
+}
+
+export const toSriImportMap = (tag: string, importMapJson: ImportMapJson, newIntegrityMap: ImportMapJson['integrity']) => {
+    const newImportMap = JSON.stringify({
+        ...importMapJson,
+        integrity: newIntegrityMap,
+    });
+    return tag.replace(/<script([^>]*)>([\s\S]*?)<\/script>/, (_, attributes, _content) => {
+        return `<script${attributes}>${newImportMap}</script>`;
+    });
+};
+
 const toHtmlWithSri = async (
     htmlContent: string,
     baseDir: string,
@@ -77,12 +138,12 @@ const toHtmlWithSri = async (
     verify?: boolean,
 ): Promise<string> => {
     // Find all script and link tags that should have integrity hashes
-    const re = /<(script|link)\s+[^>]*(?:src|href)="([^"]+)"[^>]*>/g;
+    const re = /<(script|link)\s+[^>]*(?:src|href)="?([^"]+)?"?[^>]*>(?:(.*?)<\/\1>)?|<script\s+[^>]*type="importmap"[^>]*>([\s\S]*?)<\/script>/g;
 
     let updatedHtml = htmlContent;
     const matches = htmlContent.matchAll(re);
-
-    for (const [scriptOrLinkTag, _, src] of matches) {
+    for (const match of matches) {
+        const [scriptOrLinkTag, _, src] = match;
         // Skip non supported resources
         if (!isSriTag(scriptOrLinkTag)) {
             continue;
@@ -90,18 +151,39 @@ const toHtmlWithSri = async (
 
         // Get content of script or link
         try {
+            if (isImportMapTag(scriptOrLinkTag)) {
+                const importMapJson =  parseImportMap(scriptOrLinkTag);
+                const imports = extractImports(importMapJson);
+                const newIntegrityMap: ImportMapJson['imports'] = {};
+                for (const { src, oldHash} of imports){
+                    const content = await getContent(src, baseDir, baseUrl, noRemote);
+                    const hashHex = calculateSha384(content);
+                    const integrity = `sha384-${hashHex}`;
+                    if (verify) {
+                        if (!oldHash) {
+                            throw new Error(`Missing hash for ${src}, expected ${integrity}`);
+                        }
+                        if (oldHash !== integrity) {
+                            throw new Error(`Invalid hash ${oldHash} for ${src}, expected ${integrity}`);
+                        }
+                    }
+                    newIntegrityMap[src] = integrity;
+                }
+                const sriImportMapTag = toSriImportMap(scriptOrLinkTag, importMapJson, newIntegrityMap);
+                updatedHtml = updatedHtml.replace(scriptOrLinkTag, sriImportMapTag);
+                continue;
+            }
+
             const content = await getContent(src, baseDir, baseUrl, noRemote);
-
-
             // Calculate SHA-384 hash and create integrity attribute value
             const hashHex = calculateSha384(content);
             const integrity = `sha384-${hashHex}`;
-            if(verify) {
+            if (verify) {
                 const oldHash = getIntegrityFromTag(scriptOrLinkTag);
-                if(!oldHash){
+                if (!oldHash) {
                     throw new Error(`Missing hash for ${src}, expected ${integrity}`);
                 }
-                if(oldHash !== integrity){
+                if (oldHash !== integrity) {
                     throw new Error(`Invalid hash ${oldHash} for ${src}, expected ${integrity}`);
                 }
             }

@@ -321,38 +321,32 @@ const handleUpdatedHtml = (
 
 const toSriScriptTag = (tag: string, integrity: string): string => {
     // First handle the integrity attribute
-    let newTag = tag;
-
-    if (tag.includes("integrity=")) {
-        // Replace existing integrity attribute
-        const reIntegrity = /integrity="[^"]*"/g;
-        newTag = newTag.replace(reIntegrity, `integrity="${integrity}"`);
-    } else {
-        // Add integrity attribute
-        if (tag.endsWith("/>")) {
-            newTag = newTag.replace(/\/>$/, ` integrity="${integrity}"/>`);
-        } else {
-            newTag = newTag.replace(/>$/, ` integrity="${integrity}">`);
-        }
-    }
+    const integrityTag = alterTag(tag, "integrity", integrity);
 
     // Ensure crossorigin attribute is set
-    return ensureCrossoriginAnonymous(newTag);
+    return alterTag(integrityTag, "crossorigin", "anonymous");
 };
 
-const ensureCrossoriginAnonymous = (tag: string): string => {
-    // Replace if exists
-    if (tag.includes("crossorigin=")) {
-        const reCrossorigin = /crossorigin="[^"]*"/g;
-        return tag.replace(reCrossorigin, 'crossorigin="anonymous"');
+const alterTag = (tag: string, param: "crossorigin" | "integrity", value: string) => {
+    const hasParamRegex = new RegExp(`^<[^>]*\\s+${param}="[^"]*"`);
+    const keyValue = `${param}="${value}"`
+    if (hasParamRegex.test(tag)) {
+        // Replace param with new value if existing param is found in tag
+        const replaceParamRegex = new RegExp(`${param}="[^"]*"`);
+        return tag.replace(replaceParamRegex, keyValue);
     }
-
-    // Add crossorigin="anonymous" attribute if missing from tag
+    const hasClosingTag = /<\/script[^>]*>$|<\/link[^>]*>$/.test(tag);
+    if (hasClosingTag) {
+        // Add param and value to the opening tag
+        return tag.replace(/>(?!$)/, ` ${keyValue}>`);
+    }
     if (tag.endsWith("/>")) {
-        return tag.replace(/\/>$/, ' crossorigin="anonymous"/>');
+        // Add param and value to self closing tag
+        return tag.replace(/\/>$/, ` ${keyValue}/>`);
     }
-    return tag.replace(/>$/, ' crossorigin="anonymous">');
-};
+    // No close tag and no self closing tag, add param and value to end of tag
+    return tag.replace(/>$/, ` ${keyValue}>`);
+}
 
 export {
     extractLinkRel,
@@ -362,7 +356,7 @@ export {
     readLocalContent,
     fetchRemoteContent,
     calculateSha384,
-    ensureCrossoriginAnonymous,
     toSriScriptTag,
     handleUpdatedHtml,
+    alterTag
 };

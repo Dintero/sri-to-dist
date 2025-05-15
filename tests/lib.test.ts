@@ -10,13 +10,13 @@ import {
     readLocalContent,
     fetchRemoteContent,
     calculateSha384,
-    ensureCrossoriginAnonymous,
     toSriScriptTag,
     handleUpdatedHtml,
     isImportMapTag,
     parseImportMap,
     extractImports,
     toSriImportMap,
+    alterTag,
 } from "../src/lib";
 
 // Automatically track and clean up temporary files
@@ -273,6 +273,7 @@ describe("sri-to-dist-lib", () => {
                 '<html><head><title>index</title><script src="example/app.js" integrity="sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC" crossorigin="anonymous"></head><body>Hello world!s</body></html>';
             expect(result).toBe(expected);
         });
+
         it("should add integrity attributes to script tags when verifying valid integrity hash", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
@@ -305,7 +306,8 @@ describe("sri-to-dist-lib", () => {
                 "Missing hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
             );
         });
-        it("sshould raise when verifying wrong integrity hash", async () => {
+
+        it("should raise when verifying wrong integrity hash", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js" integrity="bad-hash"></head><body>Hello world!s</body></html>`;
@@ -320,6 +322,7 @@ describe("sri-to-dist-lib", () => {
                 "Invalid hash bad-hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
             );
         });
+
         it("should add integrity to importmap script tags", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
@@ -626,20 +629,45 @@ describe("sri-to-dist-lib", () => {
         });
     });
 
-    describe("ensureCrossoriginAnonymous", () => {
+    describe("alterTag", () => {
         it('should add crossorigin attribute to tag ending with ">"', () => {
-            const result = ensureCrossoriginAnonymous(">");
-            expect(result).toBe(' crossorigin="anonymous">');
+            const result = alterTag('<script>', 'crossorigin', 'anonymous');
+            expect(result).toBe('<script crossorigin="anonymous">');
         });
 
         it("should add crossorigin attribute to self-closing tag", () => {
-            const result = ensureCrossoriginAnonymous("/>");
-            expect(result).toBe(' crossorigin="anonymous"/>');
+            const result = alterTag('<script/>', 'crossorigin', 'anonymous');
+            expect(result).toBe('<script crossorigin="anonymous"/>');
         });
 
-        it("should overwrite existing crossorigin attribute", () => {
-            const result = ensureCrossoriginAnonymous(' crossorigin="other"/>');
-            expect(result).toBe(' crossorigin="anonymous"/>');
+        it("should add crossorigin attribute to start tag", () => {
+            const result = alterTag('<script></script>', 'crossorigin', 'anonymous');
+            expect(result).toBe('<script crossorigin="anonymous"></script>');
+        });
+
+        it("should add crossorigin attribute to start tag and leave content unchanged", () => {
+            const result = alterTag('<script>console.log(`crossorigin="other"`);</script>', "crossorigin", "anonymous");
+            expect(result).toBe('<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>');
+        });
+
+        it("should overwrite existing crossorigin attribute self closing tag", () => {
+            const result = alterTag('<script crossorigin="other"/>', "crossorigin", "anonymous");
+            expect(result).toBe('<script crossorigin="anonymous"/>');
+        });
+
+        it("should overwrite existing crossorigin attribute self non closing tag", () => {
+            const result = alterTag('<script crossorigin="other">', "crossorigin", "anonymous");
+            expect(result).toBe('<script crossorigin="anonymous">');
+        });
+
+        it("should overwrite existing crossorigin attribute in start tag", () => {
+            const result = alterTag('<script crossorigin="other"></script>', "crossorigin", "anonymous");
+            expect(result).toBe('<script crossorigin="anonymous"></script>');
+        });
+
+        it("should overwrite existing crossorigin attribute in start tag with content", () => {
+            const result = alterTag('<script crossorigin="other">console.log(`crossorigin="other"`);</script>', "crossorigin", "anonymous");
+            expect(result).toBe('<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>');
         });
     });
 
@@ -657,6 +685,22 @@ describe("sri-to-dist-lib", () => {
             const integrity = "sha384-value";
             const expected =
                 '<script src="/app.js" integrity="sha384-value" crossorigin="anonymous">';
+            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+        });
+
+        it("should add integrity attribute to tag not closing tag", () => {
+            const tag = '<script src="/app.js"></script>';
+            const integrity = "sha384-value";
+            const expected =
+                '<script src="/app.js" integrity="sha384-value" crossorigin="anonymous"></script>';
+            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+        });
+
+        it("should add integrity attribute to tag not closing for inline script tag", () => {
+            const tag = '<script>console.log("hello test from within a <script> tag");</script>';
+            const integrity = "sha384-value";
+            const expected =
+                '<script integrity="sha384-value" crossorigin="anonymous">console.log("hello test from within a <script> tag");</script>';
             expect(toSriScriptTag(tag, integrity)).toBe(expected);
         });
     });

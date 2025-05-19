@@ -35,7 +35,7 @@
         "@biomejs/biome": "1.9.4",
         "@types/node": "22.15.17",
         "@types/temp": "0.9.4",
-        "semantic-release": "24.2.3",
+        "semantic-release": "24.2.4",
         "temp": "0.9.4",
         "typescript": "5.8.3",
         "vitest": "3.1.3"

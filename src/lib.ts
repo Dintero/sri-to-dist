@@ -103,7 +103,7 @@ export const parseImportMap = (scriptOrLinkTag: string) => {
             throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
         }
         return importMapJson as ImportMapJson;
-    } catch (error) {
+    } catch (_error) {
         throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
     }
 };

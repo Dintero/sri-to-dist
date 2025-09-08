@@ -192,7 +192,7 @@ describe("sri-to-dist-lib", () => {
         });
         it("should create empty list if no imports found", () => {
             const importMapJson = {};
-            // @ts-ignore
+            // @ts-expect-error
             expect(extractImports(importMapJson)).toMatchObject(
                 []
             );

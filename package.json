@@ -48,10 +48,10 @@
     },
     "private": false,
     "publishConfig": {
-      "access": "public"
+        "access": "public"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Dintero/sri-to-dist.git"
+        "url": "git+https://github.com/Dintero/sri-to-dist.git"
     }
 }

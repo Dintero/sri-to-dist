@@ -5,6 +5,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
 jobs:
   release:
     name: Release
@@ -17,27 +20,26 @@ jobs:
       issues: write
       pull-requests: write
 
-    env:
-      GH_TOKEN: ${{ github.token }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 5
-
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: "lts/*"
+          registry-url: 'https://registry.npmjs.org/'
+          scope: '@dintero'
       - name: Install dependencies, lint, test and build
         run: |
           yarn install --immutable
           yarn run lint
           yarn run test
           yarn run build
+      - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
+        run: npm audit signatures
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: yarn run semantic-release

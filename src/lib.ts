@@ -1,6 +1,6 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createHash } from "node:crypto";
 
 const extractLinkRel = (scriptOrLinkTag: string): string | undefined => {
     const re = /<link\s+[^>]*rel="([^"]*)"/;
@@ -70,64 +70,81 @@ const isSriTag = (scriptOrLinkTag: string): boolean => {
 };
 
 export const isImportMapTag = (scriptOrLinkTag: string): boolean => {
-    return scriptOrLinkTag.startsWith("<script ") && scriptOrLinkTag.includes('type="importmap"');
-}
+    return (
+        scriptOrLinkTag.startsWith("<script ") &&
+        scriptOrLinkTag.includes('type="importmap"')
+    );
+};
 
 type ImportMapJson = {
     imports: {
-        [key: string]: string
-    },
+        [key: string]: string;
+    };
     integrity?: {
-        [src: string]: string
-    }
-    scopes?:{
+        [src: string]: string;
+    };
+    scopes?: {
         [scope: string]: {
-            [key: string]: string
-        }
-    }
-}
+            [key: string]: string;
+        };
+    };
+};
 
 export const parseImportMap = (scriptOrLinkTag: string) => {
     // Extract content between script tags
     const contentRegex = /<script[^>]*>([\s\S]*?)<\/script>/;
     const contentMatch = scriptOrLinkTag.match(contentRegex);
     if (!contentMatch || !contentMatch[1]) {
-        throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+        throw new Error(
+            `Failed to parse import map for tag ${scriptOrLinkTag}`,
+        );
     }
 
     try {
         const content = contentMatch[1].trim();
         // Parse the import map JSON
         const importMapJson = JSON.parse(content);
-        if(typeof importMapJson !== 'object' || Array.isArray(importMapJson)) {
-            throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+        if (typeof importMapJson !== "object" || Array.isArray(importMapJson)) {
+            throw new Error(
+                `Failed to parse import map for tag ${scriptOrLinkTag}`,
+            );
         }
         return importMapJson as ImportMapJson;
     } catch (_error) {
-        throw new Error(`Failed to parse import map for tag ${scriptOrLinkTag}`);
+        throw new Error(
+            `Failed to parse import map for tag ${scriptOrLinkTag}`,
+        );
     }
 };
 
 export const extractImports = (importMapJson: ImportMapJson) => {
-    const imports = importMapJson.imports ?
-        Object.keys(importMapJson.imports).map(key => {
-            const src = importMapJson.imports[key];
-            return {
-                src,
-                oldHash: importMapJson.integrity?.[src]
-            };
-        }) : [];
+    const imports = importMapJson.imports
+        ? Object.keys(importMapJson.imports).map((key) => {
+              const src = importMapJson.imports[key];
+              return {
+                  src,
+                  oldHash: importMapJson.integrity?.[src],
+              };
+          })
+        : [];
     return imports;
-}
+};
 
-export const toSriImportMap = (tag: string, importMapJson: ImportMapJson, newIntegrityMap: ImportMapJson['integrity']) => {
+export const toSriImportMap = (
+    tag: string,
+    importMapJson: ImportMapJson,
+    newIntegrityMap: ImportMapJson["integrity"],
+) => {
     const newImportMap = JSON.stringify({
         ...importMapJson,
         integrity: newIntegrityMap,
     });
-    return tag.replace(/<script([^>]*)>([\s\S]*?)<\/script>/, (_, attributes, _content) => {
-        return `<script${attributes}>${newImportMap}</script>`;
-    });
+    return tag.replace(
+        /<script([^>]*)>([\s\S]*?)<\/script>/,
+        (_, attributes, _content) => {
+            return `<script${attributes}>${newImportMap}</script>`;
+        },
+    );
 };
 
 const toHtmlWithSri = async (
@@ -138,7 +155,8 @@ const toHtmlWithSri = async (
     verify?: boolean,
 ): Promise<string> => {
     // Find all script and link tags that should have integrity hashes
-    const re = /<(script|link)\s+[^>]*(?:src|href)="?([^"]+)?"?[^>]*>(?:(.*?)<\/\1>)?|<script\s+[^>]*type="importmap"[^>]*>([\s\S]*?)<\/script>/g;
+    const re =
+        /<(script|link)\s+[^>]*(?:src|href)="?([^"]+)?"?[^>]*>(?:(.*?)<\/\1>)?|<script\s+[^>]*type="importmap"[^>]*>([\s\S]*?)<\/script>/g;
 
     let updatedHtml = htmlContent;
     const matches = htmlContent.matchAll(re);
@@ -152,25 +170,41 @@ const toHtmlWithSri = async (
         // Get content of script or link
         try {
             if (isImportMapTag(scriptOrLinkTag)) {
-                const importMapJson =  parseImportMap(scriptOrLinkTag);
+                const importMapJson = parseImportMap(scriptOrLinkTag);
                 const imports = extractImports(importMapJson);
-                const newIntegrityMap: ImportMapJson['imports'] = {};
-                for (const { src, oldHash} of imports){
-                    const content = await getContent(src, baseDir, baseUrl, noRemote);
+                const newIntegrityMap: ImportMapJson["imports"] = {};
+                for (const { src, oldHash } of imports) {
+                    const content = await getContent(
+                        src,
+                        baseDir,
+                        baseUrl,
+                        noRemote,
+                    );
                     const hashHex = calculateSha384(content);
                     const integrity = `sha384-${hashHex}`;
                     if (verify) {
                         if (!oldHash) {
-                            throw new Error(`Missing hash for ${src}, expected ${integrity}`);
+                            throw new Error(
+                                `Missing hash for ${src}, expected ${integrity}`,
+                            );
                         }
                         if (oldHash !== integrity) {
-                            throw new Error(`Invalid hash ${oldHash} for ${src}, expected ${integrity}`);
+                            throw new Error(
+                                `Invalid hash ${oldHash} for ${src}, expected ${integrity}`,
+                            );
                         }
                     }
                     newIntegrityMap[src] = integrity;
                 }
-                const sriImportMapTag = toSriImportMap(scriptOrLinkTag, importMapJson, newIntegrityMap);
-                updatedHtml = updatedHtml.replace(scriptOrLinkTag, sriImportMapTag);
+                const sriImportMapTag = toSriImportMap(
+                    scriptOrLinkTag,
+                    importMapJson,
+                    newIntegrityMap,
+                );
+                updatedHtml = updatedHtml.replace(
+                    scriptOrLinkTag,
+                    sriImportMapTag,
+                );
                 continue;
             }
 
@@ -181,10 +215,14 @@ const toHtmlWithSri = async (
             if (verify) {
                 const oldHash = getIntegrityFromTag(scriptOrLinkTag);
                 if (!oldHash) {
-                    throw new Error(`Missing hash for ${src}, expected ${integrity}`);
+                    throw new Error(
+                        `Missing hash for ${src}, expected ${integrity}`,
+                    );
                 }
                 if (oldHash !== integrity) {
-                    throw new Error(`Invalid hash ${oldHash} for ${src}, expected ${integrity}`);
+                    throw new Error(
+                        `Invalid hash ${oldHash} for ${src}, expected ${integrity}`,
+                    );
                 }
             }
             // Create new script tag with integrity
@@ -200,7 +238,6 @@ const toHtmlWithSri = async (
 
     return updatedHtml;
 };
-
 
 const getIntegrityFromTag = (tag: string): string | undefined => {
     const integrityPattern = /integrity="([^"]*)"/;
@@ -220,7 +257,7 @@ const getContent = async (
         if (baseUrl && src.startsWith(baseUrl)) {
             return readLocalContent(src, baseDir, baseUrl);
         }
-        if(noRemote){
+        if (noRemote) {
             throw new Error("Remote sri resources not allowed");
         }
         return fetchRemoteContent(src);
@@ -327,9 +364,13 @@ const toSriScriptTag = (tag: string, integrity: string): string => {
     return alterTag(integrityTag, "crossorigin", "anonymous");
 };
 
-const alterTag = (tag: string, param: "crossorigin" | "integrity", value: string) => {
+const alterTag = (
+    tag: string,
+    param: "crossorigin" | "integrity",
+    value: string,
+) => {
     const hasParamRegex = new RegExp(`^<[^>]*\\s+${param}="[^"]*"`);
-    const keyValue = `${param}="${value}"`
+    const keyValue = `${param}="${value}"`;
     if (hasParamRegex.test(tag)) {
         // Replace param with new value if existing param is found in tag
         const replaceParamRegex = new RegExp(`${param}="[^"]*"`);
@@ -346,7 +387,7 @@ const alterTag = (tag: string, param: "crossorigin" | "integrity", value: string
     }
     // No close tag and no self closing tag, add param and value to end of tag
     return tag.replace(/>$/, ` ${keyValue}>`);
-}
+};
 
 export {
     extractLinkRel,
@@ -358,5 +399,5 @@ export {
     calculateSha384,
     toSriScriptTag,
     handleUpdatedHtml,
-    alterTag
+    alterTag,
 };

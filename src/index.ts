@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Command } from "commander";
+import { version } from "../package.json";
 import { handleUpdatedHtml, toHtmlWithSri } from "./lib";
-import { version } from '../package.json'
 
 const main = async () => {
     try {
@@ -16,7 +16,10 @@ const main = async () => {
             .requiredOption("-i, --input <file>", "Input HTML file")
             .option("-o, --output <file>", "Optional output HTML file")
             .option("-b, --base-url <url>", "Optional base URL")
-            .option("-n, --no-remote", "Optional flag, no remote sri files allowed")
+            .option(
+                "-n, --no-remote",
+                "Optional flag, no remote sri files allowed",
+            )
             .option("-v, --verify", "Optional flag, verify hashes in input");
 
         program.parse(process.argv);
@@ -37,7 +40,7 @@ const main = async () => {
             path.dirname(inputPath),
             baseUrl,
             noRemote,
-            verify
+            verify,
         );
         handleUpdatedHtml(process.stdout, outputPath, updatedHtml);
     } catch (error) {

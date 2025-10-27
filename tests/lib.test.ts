@@ -1,22 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import * as temp from "temp";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    extractLinkRel,
-    isSriTag,
-    toHtmlWithSri,
-    getContent,
-    readLocalContent,
-    fetchRemoteContent,
+    alterTag,
     calculateSha384,
-    toSriScriptTag,
+    extractImports,
+    extractLinkRel,
+    fetchRemoteContent,
+    getContent,
     handleUpdatedHtml,
     isImportMapTag,
+    isSriTag,
     parseImportMap,
-    extractImports,
+    readLocalContent,
+    toHtmlWithSri,
     toSriImportMap,
-    alterTag,
+    toSriScriptTag,
 } from "../src/lib";
 
 // Automatically track and clean up temporary files
@@ -99,7 +99,8 @@ describe("sri-to-dist-lib", () => {
             expect(isImportMapTag(tag)).toBe(true);
         });
         it("should identify script type importmap as importmap with extra attributes", () => {
-            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x"></script>';
+            const tag =
+                '<script id="map" type="importmap" data-attr="generated-by-tool-x"></script>';
             expect(isImportMapTag(tag)).toBe(true);
         });
         it("should identify other script type as not an import map", () => {
@@ -107,7 +108,7 @@ describe("sri-to-dist-lib", () => {
             expect(isImportMapTag(tag)).toBe(false);
         });
         it("should identify script with missing type as not an import map", () => {
-            const tag = '<script></script>';
+            const tag = "<script></script>";
             expect(isImportMapTag(tag)).toBe(false);
         });
         it("should identify other type of tag not an import map", () => {
@@ -122,12 +123,18 @@ describe("sri-to-dist-lib", () => {
 
     describe("parseImportMap", () => {
         it("should extract json in importmap", () => {
-            const tag = '<script type="importmap">{"imports":{"app":"./app.js"}}</script>';
-            expect(parseImportMap(tag)).toMatchObject({imports:{app: './app.js'}});
+            const tag =
+                '<script type="importmap">{"imports":{"app":"./app.js"}}</script>';
+            expect(parseImportMap(tag)).toMatchObject({
+                imports: { app: "./app.js" },
+            });
         });
         it("should extract json in importmap with extra attributes", () => {
-            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}}</script>';
-            expect(parseImportMap(tag)).toMatchObject({imports:{app: './app.js'}});
+            const tag =
+                '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}}</script>';
+            expect(parseImportMap(tag)).toMatchObject({
+                imports: { app: "./app.js" },
+            });
         });
         it("should throw if importmap is empty", () => {
             const tag = '<script type="importmap"></script>';
@@ -158,83 +165,81 @@ describe("sri-to-dist-lib", () => {
         it("should extract imports from importmap", () => {
             const importMapJson = {
                 imports: {
-                    app: "./app.js"
-                }
+                    app: "./app.js",
+                },
             };
-            expect(extractImports(importMapJson)).toMatchObject(
-                [{
+            expect(extractImports(importMapJson)).toMatchObject([
+                {
                     src: "./app.js",
-                    oldHash: undefined
-                }]
-            );
+                    oldHash: undefined,
+                },
+            ]);
         });
         it("should extract imports with old integrity hash from importmap", () => {
             const importMapJson = {
                 imports: {
-                    app: "./app.js"
+                    app: "./app.js",
                 },
-                integrity:{
-                    "./app.js": "sha384-test"
-                }
+                integrity: {
+                    "./app.js": "sha384-test",
+                },
             };
-            expect(extractImports(importMapJson)).toMatchObject(
-                [{
+            expect(extractImports(importMapJson)).toMatchObject([
+                {
                     src: "./app.js",
-                    oldHash: "sha384-test"
-                }]
-            );
+                    oldHash: "sha384-test",
+                },
+            ]);
         });
         it("should create empty list if imports is empty", () => {
-            const importMapJson = {imports:{}};
-            expect(extractImports(importMapJson)).toMatchObject(
-                []
-            );
+            const importMapJson = { imports: {} };
+            expect(extractImports(importMapJson)).toMatchObject([]);
         });
         it("should create empty list if no imports found", () => {
             const importMapJson = {};
             // @ts-expect-error
-            expect(extractImports(importMapJson)).toMatchObject(
-                []
-            );
+            expect(extractImports(importMapJson)).toMatchObject([]);
         });
     });
 
     describe("toSriImportMap", () => {
         it("should create updated importmap tag with integrity object", () => {
-            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "other":{"key": "value"}}</script>';
+            const tag =
+                '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "other":{"key": "value"}}</script>';
             const importMapJson = {
                 imports: {
-                    app: "./app.js"
+                    app: "./app.js",
                 },
                 other: {
-                    key: "value"
-                }
+                    key: "value",
+                },
             };
             const newIntegrityMap = {
-                "./app.js": "sha384-test"
+                "./app.js": "sha384-test",
             };
             expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
-                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"other":{"key":"value"},"integrity":{"./app.js":"sha384-test"}}</script>`
+                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"other":{"key":"value"},"integrity":{"./app.js":"sha384-test"}}</script>`,
             );
         });
         it("should create importmap tag with updated integrity object", () => {
-            const tag = '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "integrity":{"./app.js": "sha384-old"}, "other":{"key": "value"}}</script>';
+            const tag =
+                '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "integrity":{"./app.js": "sha384-old"}, "other":{"key": "value"}}</script>';
             const importMapJson = {
                 imports: {
-                    app: "./app.js"
+                    app: "./app.js",
                 },
                 integrity: {
-                    "./app.js": "sha384-old"
+                    "./app.js": "sha384-old",
                 },
                 other: {
-                    key: "value"
-                }
+                    key: "value",
+                },
             };
             const newIntegrityMap = {
-                "./app.js": "sha384-test"
+                "./app.js": "sha384-test",
             };
             expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
-                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"integrity":{"./app.js":"sha384-test"},"other":{"key":"value"}}</script>`
+                `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"integrity":{"./app.js":"sha384-test"},"other":{"key":"value"}}</script>`,
             );
         });
     });
@@ -266,7 +271,7 @@ describe("sri-to-dist-lib", () => {
                 path.dirname(path.join(process.cwd(), "index.html")),
                 baseUrl,
                 false,
-                false
+                false,
             );
 
             const expected =
@@ -283,7 +288,7 @@ describe("sri-to-dist-lib", () => {
                 path.dirname(path.join(process.cwd(), "index.html")),
                 baseUrl,
                 false,
-                true
+                true,
             );
 
             const expected =
@@ -296,13 +301,15 @@ describe("sri-to-dist-lib", () => {
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js"></head><body>Hello world!s</body></html>`;
 
-            await expect(toHtmlWithSri(
-                htmlContent,
-                path.dirname(path.join(process.cwd(), "index.html")),
-                baseUrl,
-                false,
-                true
-            )).rejects.toThrow(
+            await expect(
+                toHtmlWithSri(
+                    htmlContent,
+                    path.dirname(path.join(process.cwd(), "index.html")),
+                    baseUrl,
+                    false,
+                    true,
+                ),
+            ).rejects.toThrow(
                 "Missing hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
             );
         });
@@ -312,13 +319,15 @@ describe("sri-to-dist-lib", () => {
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js" integrity="bad-hash"></head><body>Hello world!s</body></html>`;
 
-            await expect(toHtmlWithSri(
-                htmlContent,
-                path.dirname(path.join(process.cwd(), "index.html")),
-                baseUrl,
-                false,
-                true
-            )).rejects.toThrow(
+            await expect(
+                toHtmlWithSri(
+                    htmlContent,
+                    path.dirname(path.join(process.cwd(), "index.html")),
+                    baseUrl,
+                    false,
+                    true,
+                ),
+            ).rejects.toThrow(
                 "Invalid hash bad-hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
             );
         });
@@ -332,7 +341,7 @@ describe("sri-to-dist-lib", () => {
                 path.dirname(path.join(process.cwd(), "index.html")),
                 baseUrl,
                 false,
-                false
+                false,
             );
             const expected =
                 '<html><head><title>index</title><script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./example/app.js"},"other":{"key":"value"},"integrity":{"./example/app.js":"sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC"}}</script></head><body>Hello world!s</body></html>';
@@ -532,9 +541,9 @@ describe("sri-to-dist-lib", () => {
 
             const src = "http://example.com/app.js";
             const baseUrl = "http://other-example.com";
-            await expect(getContent(src, baseDir, baseUrl, true)).rejects.toThrow(
-                "Remote sri resources not allowed",
-            );
+            await expect(
+                getContent(src, baseDir, baseUrl, true),
+            ).rejects.toThrow("Remote sri resources not allowed");
             expect(global.fetch).not.toHaveBeenCalled();
         });
 
@@ -631,43 +640,71 @@ describe("sri-to-dist-lib", () => {
 
     describe("alterTag", () => {
         it('should add crossorigin attribute to tag ending with ">"', () => {
-            const result = alterTag('<script>', 'crossorigin', 'anonymous');
+            const result = alterTag("<script>", "crossorigin", "anonymous");
             expect(result).toBe('<script crossorigin="anonymous">');
         });
 
         it("should add crossorigin attribute to self-closing tag", () => {
-            const result = alterTag('<script/>', 'crossorigin', 'anonymous');
+            const result = alterTag("<script/>", "crossorigin", "anonymous");
             expect(result).toBe('<script crossorigin="anonymous"/>');
         });
 
         it("should add crossorigin attribute to start tag", () => {
-            const result = alterTag('<script></script>', 'crossorigin', 'anonymous');
+            const result = alterTag(
+                "<script></script>",
+                "crossorigin",
+                "anonymous",
+            );
             expect(result).toBe('<script crossorigin="anonymous"></script>');
         });
 
         it("should add crossorigin attribute to start tag and leave content unchanged", () => {
-            const result = alterTag('<script>console.log(`crossorigin="other"`);</script>', "crossorigin", "anonymous");
-            expect(result).toBe('<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>');
+            const result = alterTag(
+                '<script>console.log(`crossorigin="other"`);</script>',
+                "crossorigin",
+                "anonymous",
+            );
+            expect(result).toBe(
+                '<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>',
+            );
         });
 
         it("should overwrite existing crossorigin attribute self closing tag", () => {
-            const result = alterTag('<script crossorigin="other"/>', "crossorigin", "anonymous");
+            const result = alterTag(
+                '<script crossorigin="other"/>',
+                "crossorigin",
+                "anonymous",
+            );
             expect(result).toBe('<script crossorigin="anonymous"/>');
         });
 
         it("should overwrite existing crossorigin attribute self non closing tag", () => {
-            const result = alterTag('<script crossorigin="other">', "crossorigin", "anonymous");
+            const result = alterTag(
+                '<script crossorigin="other">',
+                "crossorigin",
+                "anonymous",
+            );
             expect(result).toBe('<script crossorigin="anonymous">');
         });
 
         it("should overwrite existing crossorigin attribute in start tag", () => {
-            const result = alterTag('<script crossorigin="other"></script>', "crossorigin", "anonymous");
+            const result = alterTag(
+                '<script crossorigin="other"></script>',
+                "crossorigin",
+                "anonymous",
+            );
             expect(result).toBe('<script crossorigin="anonymous"></script>');
         });
 
         it("should overwrite existing crossorigin attribute in start tag with content", () => {
-            const result = alterTag('<script crossorigin="other">console.log(`crossorigin="other"`);</script>', "crossorigin", "anonymous");
-            expect(result).toBe('<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>');
+            const result = alterTag(
+                '<script crossorigin="other">console.log(`crossorigin="other"`);</script>',
+                "crossorigin",
+                "anonymous",
+            );
+            expect(result).toBe(
+                '<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>',
+            );
         });
     });
 
@@ -697,7 +734,8 @@ describe("sri-to-dist-lib", () => {
         });
 
         it("should add integrity attribute to tag not closing for inline script tag", () => {
-            const tag = '<script>console.log("hello test from within a <script> tag");</script>';
+            const tag =
+                '<script>console.log("hello test from within a <script> tag");</script>';
             const integrity = "sha384-value";
             const expected =
                 '<script integrity="sha384-value" crossorigin="anonymous">console.log("hello test from within a <script> tag");</script>';

@@ -33,7 +33,7 @@
     "license": "MIT",
     "devDependencies": {
         "@biomejs/biome": "2.3.11",
-        "@types/node": "24.10.7",
+        "@types/node": "24.10.9",
         "@types/temp": "0.9.4",
         "semantic-release": "25.0.2",
         "temp": "0.9.4",

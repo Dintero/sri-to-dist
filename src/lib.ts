@@ -390,14 +390,14 @@ const alterTag = (
 };
 
 export {
-    extractLinkRel,
-    isSriTag,
-    toHtmlWithSri,
-    getContent,
-    readLocalContent,
-    fetchRemoteContent,
-    calculateSha384,
-    toSriScriptTag,
-    handleUpdatedHtml,
     alterTag,
+    calculateSha384,
+    extractLinkRel,
+    fetchRemoteContent,
+    getContent,
+    handleUpdatedHtml,
+    isSriTag,
+    readLocalContent,
+    toHtmlWithSri,
+    toSriScriptTag,
 };

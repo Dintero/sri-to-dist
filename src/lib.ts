@@ -94,7 +94,7 @@ export const parseImportMap = (scriptOrLinkTag: string) => {
     // Extract content between script tags
     const contentRegex = /<script[^>]*>([\s\S]*?)<\/script>/;
     const contentMatch = scriptOrLinkTag.match(contentRegex);
-    if (!contentMatch || !contentMatch[1]) {
+    if (!contentMatch?.[1]) {
         throw new Error(
             `Failed to parse import map for tag ${scriptOrLinkTag}`,
         );

@@ -1,7 +1,8 @@
+import * as assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import * as temp from "temp";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import {
     alterTag,
     calculateSha384,
@@ -19,163 +20,211 @@ import {
     toSriScriptTag,
 } from "../src/lib";
 
-// Automatically track and clean up temporary files
-temp.track();
-global.fetch = vi.fn();
-
 const stringToArrayBuffer = (str: string): ArrayBuffer => {
     const encoder = new TextEncoder();
     return encoder.encode(str).buffer;
 };
-const getTestFolderName = () =>
-    `sri-to-dist-lib-${Math.random().toString(36).substring(7)}`;
 
 describe("sri-to-dist-lib", () => {
+    let mockFetch = mock.fn<typeof global.fetch>();
+    let tempDir: string;
+
     beforeEach(() => {
-        vi.resetAllMocks();
+        mockFetch = mock.fn();
+        global.fetch = mockFetch;
+        mock.method(console, "error", () => {});
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sri-to-dist-test-"));
     });
 
-    afterEach(() => {});
+    afterEach(() => {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        mock.restoreAll();
+    });
 
     describe("isSriTag", () => {
-        it("should identify link style as SRI tag", () => {
+        test("should identify link style as SRI tag", () => {
             const tag = '<link rel="style" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
-        it("should identify link stylesheet as SRI tag", () => {
+        test("should identify link stylesheet as SRI tag", () => {
             const tag = '<link rel="stylesheet" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should identify link preload and style as SRI tag", () => {
+        test("should identify link preload and style as SRI tag", () => {
             const tag = '<link rel="preload style"/>';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should identify link preload and stylesheet as SRI tag", () => {
+        test("should identify link preload and stylesheet as SRI tag", () => {
             const tag = '<link rel="preload stylesheet"/>';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should identify link preload as style as SRI tag", () => {
+        test("should identify link preload as style as SRI tag", () => {
             const tag = '<link rel="preload" as="style" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should identify link preload as script as SRI tag", () => {
+        test("should identify link preload as script as SRI tag", () => {
             const tag = '<link rel="preload" as="script" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should not identify link preload as font as SRI tag", () => {
+        test("should not identify link preload as font as SRI tag", () => {
             const tag = '<link rel="preload" as="font" />';
-            expect(isSriTag(tag)).toBe(false);
+            assert.equal(isSriTag(tag), false);
         });
 
-        it("should identify link modulepreload as SRI tag", () => {
+        test("should identify link modulepreload as SRI tag", () => {
             const tag = '<link rel="modulepreload" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should identify link modulepreload as script as SRI tag", () => {
+        test("should identify link modulepreload as script as SRI tag", () => {
             const tag = '<link rel="modulepreload" as="script" />';
-            expect(isSriTag(tag)).toBe(true);
+            assert.ok(isSriTag(tag));
         });
 
-        it("should not identify link author as SRI tag", () => {
+        test("should not identify link author as SRI tag", () => {
             const tag = '<link rel="author"/>';
-            expect(isSriTag(tag)).toBe(false);
+            assert.equal(isSriTag(tag), false);
         });
 
-        it("should not identify meta as SRI tag", () => {
+        test("should not identify meta as SRI tag", () => {
             const tag = '<meta charset="UTF-8">';
-            expect(isSriTag(tag)).toBe(false);
+            assert.equal(isSriTag(tag), false);
         });
     });
 
     describe("isImportMapTag", () => {
-        it("should identify script type importmap as importmap", () => {
+        test("should identify script type importmap as importmap", () => {
             const tag = '<script type="importmap"></script>';
-            expect(isImportMapTag(tag)).toBe(true);
+            assert.ok(isImportMapTag(tag));
         });
-        it("should identify script type importmap as importmap with extra attributes", () => {
+
+        test("should identify script type importmap as importmap with extra attributes", () => {
             const tag =
                 '<script id="map" type="importmap" data-attr="generated-by-tool-x"></script>';
-            expect(isImportMapTag(tag)).toBe(true);
+            assert.ok(isImportMapTag(tag));
         });
-        it("should identify other script type as not an import map", () => {
+
+        test("should identify other script type as not an import map", () => {
             const tag = '<script type="other"></script>';
-            expect(isImportMapTag(tag)).toBe(false);
+            assert.equal(isImportMapTag(tag), false);
         });
-        it("should identify script with missing type as not an import map", () => {
+
+        test("should identify script with missing type as not an import map", () => {
             const tag = "<script></script>";
-            expect(isImportMapTag(tag)).toBe(false);
+            assert.equal(isImportMapTag(tag), false);
         });
-        it("should identify other type of tag not an import map", () => {
+
+        test("should identify other type of tag not an import map", () => {
             const tag = '<link rel="author"/>';
-            expect(isImportMapTag(tag)).toBe(false);
+            assert.equal(isImportMapTag(tag), false);
         });
-        it("should identify other type of tag not an import map", () => {
+
+        test("should identify other type of tag not an import map", () => {
             const tag = '<link rel="other" type="importmap"/>';
-            expect(isImportMapTag(tag)).toBe(false);
+            assert.equal(isImportMapTag(tag), false);
         });
     });
 
     describe("parseImportMap", () => {
-        it("should extract json in importmap", () => {
+        test("should extract json in importmap", () => {
             const tag =
                 '<script type="importmap">{"imports":{"app":"./app.js"}}</script>';
-            expect(parseImportMap(tag)).toMatchObject({
+            assert.deepEqual(parseImportMap(tag), {
                 imports: { app: "./app.js" },
             });
         });
-        it("should extract json in importmap with extra attributes", () => {
+
+        test("should extract json in importmap with extra attributes", () => {
             const tag =
                 '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}}</script>';
-            expect(parseImportMap(tag)).toMatchObject({
+            assert.deepEqual(parseImportMap(tag), {
                 imports: { app: "./app.js" },
             });
         });
-        it("should throw if importmap is empty", () => {
+
+        test("should throw if importmap is empty", () => {
             const tag = '<script type="importmap"></script>';
-            expect(() => parseImportMap(tag)).toThrow(
-                `Failed to parse import map for tag ${tag}`,
+            assert.throws(
+                () => parseImportMap(tag),
+                (err) => {
+                    assert.ok(err instanceof Error);
+                    assert.equal(
+                        err.message,
+                        `Failed to parse import map for tag ${tag}`,
+                    );
+                    return true;
+                },
             );
         });
-        it("should throw if importmap is self closed tag", () => {
+
+        test("should throw if importmap is self closed tag", () => {
             const tag = '<script type="importmap" />';
-            expect(() => parseImportMap(tag)).toThrow(
-                `Failed to parse import map for tag ${tag}`,
+            assert.throws(
+                () => parseImportMap(tag),
+                (err) => {
+                    assert.ok(err instanceof Error);
+                    assert.equal(
+                        err.message,
+                        `Failed to parse import map for tag ${tag}`,
+                    );
+                    return true;
+                },
             );
         });
-        it("should throw if content is not json", () => {
+
+        test("should throw if content is not json", () => {
             const tag = '<script type="importmap">Not a json object</script>';
-            expect(() => parseImportMap(tag)).toThrow(
-                `Failed to parse import map for tag ${tag}`,
+            assert.throws(
+                () => parseImportMap(tag),
+                (err) => {
+                    assert.ok(err instanceof Error);
+                    assert.equal(
+                        err.message,
+                        `Failed to parse import map for tag ${tag}`,
+                    );
+                    return true;
+                },
             );
         });
-        it("should throw if content is wrong tag type", () => {
+
+        test("should throw if content is wrong tag type", () => {
             const tag = '<link rel="other" type="importmap"/>';
-            expect(() => parseImportMap(tag)).toThrow(
-                `Failed to parse import map for tag ${tag}`,
+            assert.throws(
+                () => parseImportMap(tag),
+                (err) => {
+                    assert.ok(err instanceof Error);
+                    assert.equal(
+                        err.message,
+                        `Failed to parse import map for tag ${tag}`,
+                    );
+                    return true;
+                },
             );
         });
     });
+
     describe("extractImports", () => {
-        it("should extract imports from importmap", () => {
+        test("should extract imports from importmap", () => {
             const importMapJson = {
                 imports: {
                     app: "./app.js",
                 },
             };
-            expect(extractImports(importMapJson)).toMatchObject([
+
+            assert.deepEqual(extractImports(importMapJson), [
                 {
                     src: "./app.js",
                     oldHash: undefined,
                 },
             ]);
         });
-        it("should extract imports with old integrity hash from importmap", () => {
+
+        test("should extract imports with old integrity hash from importmap", () => {
             const importMapJson = {
                 imports: {
                     app: "./app.js",
@@ -184,26 +233,28 @@ describe("sri-to-dist-lib", () => {
                     "./app.js": "sha384-test",
                 },
             };
-            expect(extractImports(importMapJson)).toMatchObject([
+            assert.deepEqual(extractImports(importMapJson), [
                 {
                     src: "./app.js",
                     oldHash: "sha384-test",
                 },
             ]);
         });
-        it("should create empty list if imports is empty", () => {
+
+        test("should create empty list if imports is empty", () => {
             const importMapJson = { imports: {} };
-            expect(extractImports(importMapJson)).toMatchObject([]);
+            assert.deepEqual(extractImports(importMapJson), []);
         });
-        it("should create empty list if no imports found", () => {
+
+        test("should create empty list if no imports found", () => {
             const importMapJson = {};
             // @ts-expect-error
-            expect(extractImports(importMapJson)).toMatchObject([]);
+            assert.deepEqual(extractImports(importMapJson), []);
         });
     });
 
     describe("toSriImportMap", () => {
-        it("should create updated importmap tag with integrity object", () => {
+        test("should create updated importmap tag with integrity object", () => {
             const tag =
                 '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "other":{"key": "value"}}</script>';
             const importMapJson = {
@@ -217,11 +268,12 @@ describe("sri-to-dist-lib", () => {
             const newIntegrityMap = {
                 "./app.js": "sha384-test",
             };
-            expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
+            assert.equal(
+                toSriImportMap(tag, importMapJson, newIntegrityMap),
                 `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"other":{"key":"value"},"integrity":{"./app.js":"sha384-test"}}</script>`,
             );
         });
-        it("should create importmap tag with updated integrity object", () => {
+        test("should create importmap tag with updated integrity object", () => {
             const tag =
                 '<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"}, "integrity":{"./app.js": "sha384-old"}, "other":{"key": "value"}}</script>';
             const importMapJson = {
@@ -238,31 +290,32 @@ describe("sri-to-dist-lib", () => {
             const newIntegrityMap = {
                 "./app.js": "sha384-test",
             };
-            expect(toSriImportMap(tag, importMapJson, newIntegrityMap)).toEqual(
+            assert.equal(
+                toSriImportMap(tag, importMapJson, newIntegrityMap),
                 `<script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./app.js"},"integrity":{"./app.js":"sha384-test"},"other":{"key":"value"}}</script>`,
             );
         });
     });
 
     describe("extractLinkRel", () => {
-        it("should return undefined for script tag", () => {
+        test("should return undefined for script tag", () => {
             const tag = '<script src="./app.js" />';
-            expect(extractLinkRel(tag)).toBeUndefined();
+            assert.equal(extractLinkRel(tag), undefined);
         });
 
-        it("should return undefined for link tag without rel", () => {
+        test("should return undefined for link tag without rel", () => {
             const tag = "<link />";
-            expect(extractLinkRel(tag)).toBeUndefined();
+            assert.equal(extractLinkRel(tag), undefined);
         });
 
-        it("should extract rel value from link tag", () => {
+        test("should extract rel value from link tag", () => {
             const tag = '<link rel="hello" />';
-            expect(extractLinkRel(tag)).toBe("hello");
+            assert.equal(extractLinkRel(tag), "hello");
         });
     });
 
     describe("toHtmlWithSri", () => {
-        it("should add integrity attributes to script tags", async () => {
+        test("should add integrity attributes to script tags", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js"></head><body>Hello world!s</body></html>`;
@@ -276,10 +329,10 @@ describe("sri-to-dist-lib", () => {
 
             const expected =
                 '<html><head><title>index</title><script src="example/app.js" integrity="sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC" crossorigin="anonymous"></head><body>Hello world!s</body></html>';
-            expect(result).toBe(expected);
+            assert.equal(result, expected);
         });
 
-        it("should add integrity attributes to script tags when verifying valid integrity hash", async () => {
+        test("should add integrity attributes to script tags when verifying valid integrity hash", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js" integrity="sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC"></head><body>Hello world!s</body></html>`;
@@ -293,46 +346,46 @@ describe("sri-to-dist-lib", () => {
 
             const expected =
                 '<html><head><title>index</title><script src="example/app.js" integrity="sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC" crossorigin="anonymous"></head><body>Hello world!s</body></html>';
-            expect(result).toBe(expected);
+            assert.equal(result, expected);
         });
 
-        it("should raise when verifying non existing integrity hash", async () => {
+        test("should raise when verifying non existing integrity hash", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js"></head><body>Hello world!s</body></html>`;
 
-            await expect(
-                toHtmlWithSri(
-                    htmlContent,
-                    path.dirname(path.join(process.cwd(), "index.html")),
-                    baseUrl,
-                    false,
-                    true,
-                ),
-            ).rejects.toThrow(
-                "Missing hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
+            await assert.rejects(
+                () =>
+                    toHtmlWithSri(
+                        htmlContent,
+                        path.dirname(path.join(process.cwd(), "index.html")),
+                        baseUrl,
+                        false,
+                        true,
+                    ),
+                /Missing hash for example\/app.js, expected sha384-wU4WKzlcdNRZlPFH\/ryF\/H7DbuSWr8HLZh\+p22IX9KQTcDXNAYiYBlK8Kw51nTgC/,
             );
         });
 
-        it("should raise when verifying wrong integrity hash", async () => {
+        test("should raise when verifying wrong integrity hash", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script src="example/app.js" integrity="bad-hash"></head><body>Hello world!s</body></html>`;
 
-            await expect(
-                toHtmlWithSri(
-                    htmlContent,
-                    path.dirname(path.join(process.cwd(), "index.html")),
-                    baseUrl,
-                    false,
-                    true,
-                ),
-            ).rejects.toThrow(
-                "Invalid hash bad-hash for example/app.js, expected sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC",
+            await assert.rejects(
+                () =>
+                    toHtmlWithSri(
+                        htmlContent,
+                        path.dirname(path.join(process.cwd(), "index.html")),
+                        baseUrl,
+                        false,
+                        true,
+                    ),
+                /Invalid hash bad-hash for example\/app.js, expected sha384-wU4WKzlcdNRZlPFH\/ryF\/H7DbuSWr8HLZh\+p22IX9KQTcDXNAYiYBlK8Kw51nTgC/,
             );
         });
 
-        it("should add integrity to importmap script tags", async () => {
+        test("should add integrity to importmap script tags", async () => {
             const baseUrl = "";
             // Note uses fixture app.js file from /example folder
             const htmlContent = `<html><head><title>index</title><script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./example/app.js"}, "other":{"key": "value"}}</script></head><body>Hello world!s</body></html>`;
@@ -345,13 +398,12 @@ describe("sri-to-dist-lib", () => {
             );
             const expected =
                 '<html><head><title>index</title><script id="map" type="importmap" data-attr="generated-by-tool-x">{"imports":{"app":"./example/app.js"},"other":{"key":"value"},"integrity":{"./example/app.js":"sha384-wU4WKzlcdNRZlPFH/ryF/H7DbuSWr8HLZh+p22IX9KQTcDXNAYiYBlK8Kw51nTgC"}}</script></head><body>Hello world!s</body></html>';
-            expect(result).toBe(expected);
+            assert.equal(result, expected);
         });
     });
 
     describe("readLocalContent", () => {
-        it("should read file content", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should read file content", () => {
             const baseDir = tempDir;
             const baseUrl = "";
             const src = "app.js";
@@ -360,11 +412,10 @@ describe("sri-to-dist-lib", () => {
             fs.writeFileSync(filePath, localContent);
 
             const result = readLocalContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
+            assert.equal(result.toString(), localContent);
         });
 
-        it("should read file content with relative src", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should read file content with relative src", () => {
             const baseDir = tempDir;
             const baseUrl = "";
             const src = "./app.js";
@@ -373,11 +424,10 @@ describe("sri-to-dist-lib", () => {
             fs.writeFileSync(filePath, localContent);
 
             const result = readLocalContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
+            assert.equal(result.toString(), localContent);
         });
 
-        it("should read file content with absolute src", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should read file content with absolute src", () => {
             const baseDir = tempDir;
             const baseUrl = "";
             const src = "/app.js";
@@ -386,11 +436,10 @@ describe("sri-to-dist-lib", () => {
             fs.writeFileSync(filePath, localContent);
 
             const result = readLocalContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
+            assert.equal(result.toString(), localContent);
         });
 
-        it("should strip relative base url without trailing slash and read file", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should strip relative base url without trailing slash and read file", () => {
             const baseDir = tempDir;
             const baseUrl = "relative_base_url";
             const src = "relative_base_url/app.js";
@@ -399,11 +448,10 @@ describe("sri-to-dist-lib", () => {
             fs.writeFileSync(filePath, localContent);
 
             const result = readLocalContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
+            assert.equal(result.toString(), localContent);
         });
 
-        it("should strip relative base url with trailing slash and read file", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should strip relative base url with trailing slash and read file", () => {
             const baseDir = tempDir;
             const baseUrl = "relative_base_url/";
             const src = "relative_base_url/app.js";
@@ -412,95 +460,119 @@ describe("sri-to-dist-lib", () => {
             fs.writeFileSync(filePath, localContent);
 
             const result = readLocalContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
+            assert.equal(result.toString(), localContent);
         });
     });
 
     describe("fetchRemoteContent", () => {
-        it("should fetch remote JS content", async () => {
+        test("should fetch remote JS content", async () => {
             const remoteContent = 'console.log("Hello from remote resource");';
             const expectedHeaders = {
                 "Content-Type": "application/javascript",
             };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
 
+            mockFetch.mock.mockImplementationOnce(
+                async () =>
+                    ({
+                        headers: new Headers(expectedHeaders),
+                        arrayBuffer: () => stringToArrayBuffer(remoteContent),
+                        ok: true,
+                    }) as unknown as Response,
+            );
             const src = "http://example.com/app.js";
+
             const result = await fetchRemoteContent(src);
-            expect(result.toString()).toBe(remoteContent);
-            expect(global.fetch).toHaveBeenCalledWith(
+            assert.equal(result.toString(), remoteContent);
+            assert.equal(mockFetch.mock.calls.length, 1);
+            assert.equal(
+                mockFetch.mock.calls[0].arguments[0],
                 "http://example.com/app.js",
             );
         });
 
-        it("should fetch remote CSS content", async () => {
+        test("should fetch remote CSS content", async () => {
             const remoteContent = "body{ background: hotpink;}";
             const expectedHeaders = {
                 "Content-Type": "text/css",
             };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
+
+            mockFetch.mock.mockImplementationOnce(
+                async () =>
+                    ({
+                        headers: new Headers(expectedHeaders),
+                        arrayBuffer: () => stringToArrayBuffer(remoteContent),
+                        ok: true,
+                    }) as unknown as Response,
+            );
+
             const src = "http://example.com/styles.css";
             const result = await fetchRemoteContent(src);
-            expect(result.toString()).toBe(remoteContent);
-            expect(global.fetch).toHaveBeenCalledWith(
+            assert.equal(result.toString(), remoteContent);
+            assert.equal(mockFetch.mock.calls.length, 1);
+            assert.equal(
+                mockFetch.mock.calls[0].arguments[0],
                 "http://example.com/styles.css",
             );
         });
 
-        it("should throw error for bad content type", async () => {
+        test("should throw error for bad content type", async () => {
             const remoteContent =
                 "<html><head><title>404</title></head><body>Not found</body></html>";
             const expectedHeaders = {
                 "Content-Type": "text/html",
             };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
+
+            mockFetch.mock.mockImplementationOnce(
+                async () =>
+                    ({
+                        headers: new Headers(expectedHeaders),
+                        arrayBuffer: () => stringToArrayBuffer(remoteContent),
+                        ok: true,
+                    }) as unknown as Response,
+            );
 
             const src = "http://example.com/styles.css";
-            await expect(fetchRemoteContent(src)).rejects.toThrow(
-                "Unexpected content type",
+            await assert.rejects(
+                () => fetchRemoteContent(src),
+                /Unexpected content type/,
             );
-            expect(global.fetch).toHaveBeenCalledWith(
+
+            assert.equal(mockFetch.mock.calls.length, 1);
+            assert.equal(
+                mockFetch.mock.calls[0].arguments[0],
                 "http://example.com/styles.css",
             );
         });
     });
 
     describe("getContent", () => {
-        it("should get remote content with no base url", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should get remote content with no base url", async () => {
             const baseDir = tempDir;
             const remoteContent = 'console.log("Hello from remote resource");';
             const expectedHeaders = {
                 "Content-Type": "application/javascript",
             };
 
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
+            mockFetch.mock.mockImplementationOnce(
+                async () =>
+                    ({
+                        headers: new Headers(expectedHeaders),
+                        arrayBuffer: () => stringToArrayBuffer(remoteContent),
+                        ok: true,
+                    }) as unknown as Response,
+            );
 
             const src = "http://example.com/app.js";
             const result = await getContent(src, baseDir, undefined);
-            expect(result.toString()).toBe(remoteContent);
-            expect(global.fetch).toHaveBeenCalledWith(
+            assert.equal(result.toString(), remoteContent);
+            assert.equal(mockFetch.mock.calls.length, 1);
+            assert.equal(
+                mockFetch.mock.calls[0].arguments[0],
                 "http://example.com/app.js",
             );
         });
 
-        it("should get remote content with relative base url", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should get remote content with relative base url", async () => {
             const baseDir = tempDir;
             const baseUrl = "relative_base_url/";
             const remoteContent = 'console.log("Hello from remote resource");';
@@ -508,95 +580,67 @@ describe("sri-to-dist-lib", () => {
                 "Content-Type": "application/javascript",
             };
 
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
+            mockFetch.mock.mockImplementationOnce(
+                async () =>
+                    ({
+                        headers: new Headers(expectedHeaders),
+                        arrayBuffer: () => stringToArrayBuffer(remoteContent),
+                        ok: true,
+                    }) as unknown as Response,
+            );
 
             const src = "http://example.com/app.js";
             const result = await getContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(remoteContent);
-            expect(global.fetch).toHaveBeenCalledWith(
+            assert.equal(result.toString(), remoteContent);
+            assert.equal(mockFetch.mock.calls.length, 1);
+            assert.equal(
+                mockFetch.mock.calls[0].arguments[0],
                 "http://example.com/app.js",
             );
         });
 
-        it("should throw when trying to get remote content ad no-remote flag is set", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should throw when trying to get remote content ad no-remote flag is set", async () => {
             const baseDir = tempDir;
             const filePath = path.join(baseDir, "app.js");
             const localContent = 'console.log("Hello from local resource");';
             fs.writeFileSync(filePath, localContent);
-
-            const remoteContent = 'console.log("Hello from remote resource");';
-            const expectedHeaders = {
-                "Content-Type": "application/javascript",
-            };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
 
             const src = "http://example.com/app.js";
             const baseUrl = "http://other-example.com";
-            await expect(
-                getContent(src, baseDir, baseUrl, true),
-            ).rejects.toThrow("Remote sri resources not allowed");
-            expect(global.fetch).not.toHaveBeenCalled();
+            await assert.rejects(
+                () => getContent(src, baseDir, baseUrl, true),
+                /Remote sri resources not allowed/,
+            );
+            assert.equal(mockFetch.mock.calls.length, 0);
         });
 
-        it("should get local content when base url matches remote url", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should get local content when base url matches remote url", async () => {
             const baseDir = tempDir;
             const filePath = path.join(baseDir, "app.js");
             const localContent = 'console.log("Hello from local resource");';
             fs.writeFileSync(filePath, localContent);
-
-            const remoteContent = 'console.log("Hello from remote resource");';
-            const expectedHeaders = {
-                "Content-Type": "application/javascript",
-            };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
 
             const src = "http://example.com/app.js";
             const baseUrl = "http://example.com";
             const result = await getContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
-            expect(global.fetch).not.toHaveBeenCalled();
+            assert.equal(result.toString(), localContent);
+            assert.equal(mockFetch.mock.calls.length, 0);
         });
 
-        it("should get local content when local path matches base url", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should get local content when local path matches base url", async () => {
             const baseDir = tempDir;
             const filePath = path.join(baseDir, "app.js");
             const localContent = 'console.log("Hello from local resource");';
             fs.writeFileSync(filePath, localContent);
 
-            const remoteContent = 'console.log("Hello from remote resource");';
-            const expectedHeaders = {
-                "Content-Type": "application/javascript",
-            };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
-
             const src = "relative_base/app.js";
             const baseUrl = "relative_base";
             const result = await getContent(src, baseDir, baseUrl);
-            expect(result.toString()).toBe(localContent);
-            expect(global.fetch).not.toHaveBeenCalled();
+            assert.equal(result.toString(), localContent);
+            assert.equal(mockFetch.mock.calls.length, 0);
         });
 
-        it("should get local content from nested directory", async () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should get local content from nested directory", async () => {
             const baseDir = tempDir;
             const nestedPath = path.join(tempDir, "nested");
             fs.mkdirSync(nestedPath);
@@ -605,168 +649,172 @@ describe("sri-to-dist-lib", () => {
             const localContent = 'console.log("Hello from local resource");';
             fs.writeFileSync(nestedFilePath, localContent);
 
-            const remoteContent = 'console.log("Hello from remote resource");';
-            const expectedHeaders = {
-                "Content-Type": "application/javascript",
-            };
-            (global.fetch as any).mockResolvedValueOnce({
-                headers: new Headers(expectedHeaders),
-                arrayBuffer: () => stringToArrayBuffer(remoteContent),
-                ok: true,
-            });
-
             const src = "nested/app.js";
             const result = await getContent(src, baseDir, undefined);
-            expect(result.toString()).toBe(localContent);
-            expect(global.fetch).not.toHaveBeenCalled();
+            assert.equal(result.toString(), localContent);
+            assert.equal(mockFetch.mock.calls.length, 0);
         });
     });
 
     describe("calculateSha384", () => {
-        it("should calculate correct hash for empty input", () => {
+        test("should calculate correct hash for empty input", () => {
             const emptyInput = Buffer.from([]);
             const expectedEmpty =
                 "OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb";
-            expect(calculateSha384(emptyInput)).toBe(expectedEmpty);
+            assert.equal(calculateSha384(emptyInput), expectedEmpty);
         });
 
-        it('should calculate correct hash for "hello world"', () => {
+        test('should calculate correct hash for "hello world"', () => {
             const testInput = Buffer.from("hello world");
             const expectedHelloWorld =
                 "/b2OdaZ/KfcBpOBAOF4uI5hjA+oQI5IRr5B/y7g1eLPkF8txzmRu/QgZ3YwIjeG9";
-            expect(calculateSha384(testInput)).toBe(expectedHelloWorld);
+            assert.equal(calculateSha384(testInput), expectedHelloWorld);
         });
     });
 
     describe("alterTag", () => {
-        it('should add crossorigin attribute to tag ending with ">"', () => {
+        test('should add crossorigin attribute to tag ending with ">"', () => {
             const result = alterTag("<script>", "crossorigin", "anonymous");
-            expect(result).toBe('<script crossorigin="anonymous">');
+            assert.equal(result, '<script crossorigin="anonymous">');
         });
 
-        it("should add crossorigin attribute to self-closing tag", () => {
+        test("should add crossorigin attribute to self-closing tag", () => {
             const result = alterTag("<script/>", "crossorigin", "anonymous");
-            expect(result).toBe('<script crossorigin="anonymous"/>');
+            assert.equal(result, '<script crossorigin="anonymous"/>');
         });
 
-        it("should add crossorigin attribute to start tag", () => {
+        test("should add crossorigin attribute to start tag", () => {
             const result = alterTag(
                 "<script></script>",
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe('<script crossorigin="anonymous"></script>');
+            assert.equal(result, '<script crossorigin="anonymous"></script>');
         });
 
-        it("should add crossorigin attribute to start tag and leave content unchanged", () => {
+        test("should add crossorigin attribute to start tag and leave content unchanged", () => {
             const result = alterTag(
                 '<script>console.log(`crossorigin="other"`);</script>',
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe(
+            assert.equal(
+                result,
                 '<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>',
             );
         });
 
-        it("should overwrite existing crossorigin attribute self closing tag", () => {
+        test("should overwrite existing crossorigin attribute self closing tag", () => {
             const result = alterTag(
                 '<script crossorigin="other"/>',
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe('<script crossorigin="anonymous"/>');
+            assert.equal(result, '<script crossorigin="anonymous"/>');
         });
 
-        it("should overwrite existing crossorigin attribute self non closing tag", () => {
+        test("should overwrite existing crossorigin attribute self non closing tag", () => {
             const result = alterTag(
                 '<script crossorigin="other">',
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe('<script crossorigin="anonymous">');
+            assert.equal(result, '<script crossorigin="anonymous">');
         });
 
-        it("should overwrite existing crossorigin attribute in start tag", () => {
+        test("should overwrite existing crossorigin attribute in start tag", () => {
             const result = alterTag(
                 '<script crossorigin="other"></script>',
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe('<script crossorigin="anonymous"></script>');
+            assert.equal(result, '<script crossorigin="anonymous"></script>');
         });
 
-        it("should overwrite existing crossorigin attribute in start tag with content", () => {
+        test("should overwrite existing crossorigin attribute in start tag with content", () => {
             const result = alterTag(
                 '<script crossorigin="other">console.log(`crossorigin="other"`);</script>',
                 "crossorigin",
                 "anonymous",
             );
-            expect(result).toBe(
+            assert.equal(
+                result,
                 '<script crossorigin="anonymous">console.log(`crossorigin="other"`);</script>',
             );
         });
     });
 
     describe("toSriScriptTag", () => {
-        it("should add integrity attribute to self-closing tag", () => {
+        test("should add integrity attribute to self-closing tag", () => {
             const tag = '<script src="/app.js"/>';
             const integrity = "sha384-value";
             const expected =
                 '<script src="/app.js" integrity="sha384-value" crossorigin="anonymous"/>';
-            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+            assert.equal(toSriScriptTag(tag, integrity), expected);
         });
 
-        it("should add integrity attribute to tag", () => {
+        test("should add integrity attribute to tag", () => {
             const tag = '<script src="/app.js">';
             const integrity = "sha384-value";
             const expected =
                 '<script src="/app.js" integrity="sha384-value" crossorigin="anonymous">';
-            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+            assert.equal(toSriScriptTag(tag, integrity), expected);
         });
 
-        it("should add integrity attribute to tag not closing tag", () => {
+        test("should add integrity attribute to tag not closing tag", () => {
             const tag = '<script src="/app.js"></script>';
             const integrity = "sha384-value";
             const expected =
                 '<script src="/app.js" integrity="sha384-value" crossorigin="anonymous"></script>';
-            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+            assert.equal(toSriScriptTag(tag, integrity), expected);
         });
 
-        it("should add integrity attribute to tag not closing for inline script tag", () => {
+        test("should add integrity attribute to tag not closing for inline script tag", () => {
             const tag =
                 '<script>console.log("hello test from within a <script> tag");</script>';
             const integrity = "sha384-value";
             const expected =
                 '<script integrity="sha384-value" crossorigin="anonymous">console.log("hello test from within a <script> tag");</script>';
-            expect(toSriScriptTag(tag, integrity)).toBe(expected);
+            assert.equal(toSriScriptTag(tag, integrity), expected);
         });
     });
 
     describe("handleUpdatedHtml", () => {
-        it("should write to output file", () => {
-            const tempDir = temp.mkdirSync(getTestFolderName());
+        test("should write to output file", () => {
             const outputPath = path.join(tempDir, "output.html");
             const updatedHtml = "updated html content";
 
             // Create a mock stdout
             const mockStdout = {
-                write: vi.fn(),
+                write: mock.fn(),
             };
-            handleUpdatedHtml(mockStdout as any, outputPath, updatedHtml);
+            handleUpdatedHtml(
+                mockStdout as unknown as NodeJS.WriteStream,
+                outputPath,
+                updatedHtml,
+            );
             const content = fs.readFileSync(outputPath, "utf-8");
-            expect(content).toBe(updatedHtml);
-            expect(mockStdout.write).not.toHaveBeenCalled();
+
+            assert.equal(content, updatedHtml);
+            assert.equal(mockStdout.write.mock.calls.length, 0);
         });
 
-        it("should write to stdout if output is undefined", () => {
+        test("should write to stdout if output is undefined", () => {
             // Create a mock stdout
             const mockStdout = {
-                write: vi.fn(),
+                write: mock.fn(),
             };
             const updatedHtml = "updated html content";
-            handleUpdatedHtml(mockStdout as any, undefined, updatedHtml);
-            expect(mockStdout.write).toHaveBeenCalledWith(`${updatedHtml}\n`);
+            handleUpdatedHtml(
+                mockStdout as unknown as NodeJS.WriteStream,
+                undefined,
+                updatedHtml,
+            );
+
+            assert.equal(mockStdout.write.mock.calls.length, 1);
+            assert.deepStrictEqual(mockStdout.write.mock.calls[0].arguments, [
+                `${updatedHtml}\n`,
+            ]);
         });
     });
 });

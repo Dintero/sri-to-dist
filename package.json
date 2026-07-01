@@ -33,7 +33,7 @@
     "author": "Sven Nicolai Viig <sven@dintero.com> (http://dintero.com)",
     "license": "MIT",
     "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "24.13.2",
         "semantic-release": "25.0.5",
         "temp": "0.9.4",

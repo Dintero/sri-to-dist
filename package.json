@@ -34,7 +34,7 @@
     "license": "MIT",
     "devDependencies": {
         "@biomejs/biome": "2.5.2",
-        "@types/node": "24.13.2",
+        "@types/node": "26.0.0",
         "semantic-release": "25.0.5",
         "temp": "0.9.4",
         "tsx": "4.23.0",

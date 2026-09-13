@@ -29,7 +29,8 @@ jobs:
           node-version: "lts/*"
           registry-url: 'https://registry.npmjs.org/'
           scope: '@dintero'
-      - name: Install dependencies, lint, test and build
+      - env:
+          NODE_AUTH_TOKEN: ""
         run: |
           yarn install --immutable
           yarn run lint

@@ -35,7 +35,6 @@ MIT
 
 Contact us at [security@dintero.com](mailto:security@dintero.com)
 
-
 ## Step 8: Build and test locally
 
 ```bash
